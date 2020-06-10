@@ -1,12 +1,12 @@
-import numpy as np
 import random
-from collections import namedtuple, deque
+from collections import deque, namedtuple
 
-from model import QNetwork
-
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+
+from src.model import QNetwork
 
 BUFFER_SIZE = int(1e5)  # replay buffer size
 BATCH_SIZE = 64  # minibatch size
@@ -23,7 +23,7 @@ class Agent:
 
     def __init__(self, state_size, action_size, seed):
         """Initialize an Agent object.
-        
+
         Params
         ======
             state_size (int): dimension of each state
@@ -58,7 +58,7 @@ class Agent:
 
     def act(self, state, eps=0.0):
         """Returns actions for given state as per current policy.
-        
+
         Params
         ======
             state (array_like): current state
@@ -81,7 +81,7 @@ class Agent:
 
         Params
         ======
-            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples 
+            experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
         states, actions, rewards, next_states, dones = experiences
@@ -95,7 +95,7 @@ class Agent:
         best_next_Q = (
             self.qnetwork_target.forward(next_states).detach().max(1)[0].unsqueeze(1)
         )
-        Q_target = rewards + gamma * best_next_Q * (1-dones)
+        Q_target = rewards + gamma * best_next_Q * (1 - dones)
 
         Q_current = self.qnetwork_local.forward(states).gather(1, actions)
         loss = criterion(Q_current, Q_target)
@@ -113,7 +113,7 @@ class Agent:
         ======
             local_model (PyTorch model): weights will be copied from
             target_model (PyTorch model): weights will be copied to
-            tau (float): interpolation parameter 
+            tau (float): interpolation parameter
         """
         for target_param, local_param in zip(
             target_model.parameters(), local_model.parameters()
