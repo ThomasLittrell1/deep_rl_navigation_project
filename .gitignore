@@ -1,5 +1,6 @@
-Banana.app
-.ipynb_checkpoints
+Banana.app/
+.ipynb_checkpoints/
 python/*
 .idea/
 .DS_Store
+unity-environment.log
