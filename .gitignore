@@ -1,0 +1,5 @@
+Banana.app
+.ipynb_checkpoints
+python/*
+.idea/
+.DS_Store
