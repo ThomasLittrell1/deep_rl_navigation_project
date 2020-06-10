@@ -4,3 +4,4 @@ python/*
 .idea/
 .DS_Store
 unity-environment.log
+src/__pycache__/
