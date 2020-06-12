@@ -21,7 +21,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class Agent:
     """Interacts with and learns from the environment."""
 
-    def __init__(self, state_size, action_size, seed):
+    def __init__(self, state_size, action_size, seed, td_target_type="DQN"):
         """Initialize an Agent object.
 
         Params
@@ -38,6 +38,8 @@ class Agent:
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
+        assert td_target_type in {"DQN", "Double DQN"}
+        self.td_target_type = td_target_type
 
         # Replay memory
         self.memory = ReplayBuffer(action_size, BUFFER_SIZE, BATCH_SIZE, seed)
@@ -86,15 +88,34 @@ class Agent:
         """
         states, actions, rewards, next_states, dones = experiences
 
-        ## TODO: compute and minimize the loss
         criterion = torch.nn.MSELoss()
         optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
         optimizer.zero_grad()
 
-        # compute the Q target using the Q-target network
-        best_next_Q = (
-            self.qnetwork_target.forward(next_states).detach().max(1)[0].unsqueeze(1)
-        )
+        if self.td_target_type == "DQN":
+            # compute the Q target using the Q-target network
+            best_next_Q = (
+                self.qnetwork_target.forward(next_states)
+                .detach()
+                .max(1)[0]
+                .unsqueeze(1)
+            )
+        elif self.td_target_type == "Double DQN":
+            # select best action using current network
+            best_next_actions = (
+                self.qnetwork_local.forward(next_states)
+                .detach()
+                .max(1)[1]
+                .reshape(-1, 1)
+            )
+
+            # Use the target network to evaluate the best actions
+            best_next_Q = (
+                self.qnetwork_target.forward(next_states)
+                .detach()
+                .gather(1, best_next_actions)
+            )
+
         Q_target = rewards + gamma * best_next_Q * (1 - dones)
 
         Q_current = self.qnetwork_local.forward(states).gather(1, actions)
