@@ -48,6 +48,8 @@ class Agent:
         # Initialize time step (for updating every UPDATE_EVERY steps)
         self.t_step = 0
 
+        self.priority_beta = 0.01
+
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
         self.memory.add(
@@ -90,7 +92,16 @@ class Agent:
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        ids, states, actions, rewards, next_states, dones, priorities = experiences
+        (
+            ids,
+            states,
+            actions,
+            rewards,
+            next_states,
+            dones,
+            priorities,
+            weights,
+        ) = experiences
 
         criterion = torch.nn.MSELoss()
         optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
@@ -125,7 +136,12 @@ class Agent:
         Q_target = rewards + gamma * best_next_Q * (1 - dones)
 
         Q_current = self.qnetwork_local.forward(states).gather(1, actions)
-        loss = criterion(Q_current, Q_target)
+        is_weight = (
+            ((BATCH_SIZE * weights) ** (-self.priority_beta))
+            .reshape(-1, 1)
+            .type(torch.FloatTensor)
+        )
+        loss = criterion(is_weight * Q_current, is_weight * Q_target)
         loss.backward()
         optimizer.step()
 
@@ -147,6 +163,8 @@ class Agent:
             new_priorities,
         ):
             self.memory.update_priority(*experience)
+
+        self.priority_beta *= 1.1
 
     @staticmethod
     def soft_update(local_model, target_model, tau):
@@ -196,13 +214,13 @@ class ReplayBuffer:
     def update_priority(
         self, id, state, action, reward, next_state, done, old_priority, new_priority
     ):
-        old_experience = Experience(
-            id, state, action, reward, next_state, done, old_priority
-        )
+        # old_experience = Experience(
+        #     id, state, action, reward, next_state, done, old_priority
+        # )
         new_experience = Experience(
             id, state, action, reward, next_state, done, new_priority
         )
-        self.memory.remove(old_experience)
+        # self.memory.remove(old_experience)
         self.memory.append(new_experience)
 
     def get_sample_weights(self):
@@ -214,49 +232,57 @@ class ReplayBuffer:
         """Randomly sample a batch of experiences from memory."""
 
         weights = self.get_sample_weights()
-        experiences: List[Experience] = random.choices(
-            population=self.memory, weights=weights, k=self.batch_size
+        experiences = random.choices(
+            population=list(zip(self.memory, weights)),
+            weights=weights,
+            k=self.batch_size,
         )
 
         ids = (
-            torch.from_numpy(np.vstack([e.idx for e in experiences if e is not None]))
+            torch.from_numpy(
+                np.vstack([e[0].idx for e in experiences if e is not None])
+            )
             .float()
             .to(device)
         )
         states = (
-            torch.from_numpy(np.vstack([e.state for e in experiences if e is not None]))
+            torch.from_numpy(
+                np.vstack([e[0].state for e in experiences if e is not None])
+            )
             .float()
             .to(device)
         )
         states = (
-            torch.from_numpy(np.vstack([e.state for e in experiences if e is not None]))
+            torch.from_numpy(
+                np.vstack([e[0].state for e in experiences if e is not None])
+            )
             .float()
             .to(device)
         )
         actions = (
             torch.from_numpy(
-                np.vstack([e.action for e in experiences if e is not None])
+                np.vstack([e[0].action for e in experiences if e is not None])
             )
             .long()
             .to(device)
         )
         rewards = (
             torch.from_numpy(
-                np.vstack([e.reward for e in experiences if e is not None])
+                np.vstack([e[0].reward for e in experiences if e is not None])
             )
             .float()
             .to(device)
         )
         next_states = (
             torch.from_numpy(
-                np.vstack([e.next_state for e in experiences if e is not None])
+                np.vstack([e[0].next_state for e in experiences if e is not None])
             )
             .float()
             .to(device)
         )
         dones = (
             torch.from_numpy(
-                np.vstack([e.done for e in experiences if e is not None]).astype(
+                np.vstack([e[0].done for e in experiences if e is not None]).astype(
                     np.uint8
                 )
             )
@@ -265,14 +291,21 @@ class ReplayBuffer:
         )
         priorities = (
             torch.from_numpy(
-                np.vstack([e.priority for e in experiences if e is not None]).astype(
+                np.vstack([e[0].priority for e in experiences if e is not None]).astype(
                     np.uint8
                 )
             )
             .float()
             .to(device)
         )
-        return ids, states, actions, rewards, next_states, dones, priorities
+        weights = (
+            torch.from_numpy(
+                np.vstack([e[1] for e in experiences if e is not None]).astype(np.uint8)
+            )
+            .float()
+            .to(device)
+        )
+        return ids, states, actions, rewards, next_states, dones, priorities, weights
 
     def __len__(self):
         """Return the current size of internal memory."""
