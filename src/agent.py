@@ -141,6 +141,7 @@ class Agent:
             .reshape(-1, 1)
             .type(torch.FloatTensor)
         )
+        is_weight = is_weight / is_weight.max()
         loss = criterion(is_weight * Q_current, is_weight * Q_target)
         loss.backward()
         optimizer.step()
