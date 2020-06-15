@@ -3,8 +3,8 @@ from collections import deque, namedtuple
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.optim as optim
+from scipy.stats import rankdata
 
 from src.model import QNetwork
 
@@ -14,10 +14,13 @@ GAMMA = 0.99  # discount factor
 TAU = 1e-3  # for soft update of target parameters
 LR = 5e-4  # learning rate
 UPDATE_EVERY = 4  # how often to update the network
+DEFAULT_PRIORITY = 1  # Priority to put on an experience before it is sampled
+PRIORITY_ALPHA = 0.1  # How much prioritization is used in sample (0 = uniform)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+# noinspection PyUnresolvedReferences
 class Agent:
     """Interacts with and learns from the environment."""
 
@@ -38,7 +41,6 @@ class Agent:
         self.qnetwork_local = QNetwork(state_size, action_size, seed).to(device)
         self.qnetwork_target = QNetwork(state_size, action_size, seed).to(device)
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
-        assert td_target_type in {"DQN", "Double DQN"}
         self.td_target_type = td_target_type
 
         # Replay memory
@@ -48,7 +50,9 @@ class Agent:
 
     def step(self, state, action, reward, next_state, done):
         # Save experience in replay memory
-        self.memory.add(state, action, reward, next_state, done)
+        self.memory.add(
+            state, action, reward, next_state, done, priority=DEFAULT_PRIORITY
+        )
 
         # Learn every UPDATE_EVERY time steps.
         self.t_step = (self.t_step + 1) % UPDATE_EVERY
@@ -86,7 +90,7 @@ class Agent:
             experiences (Tuple[torch.Tensor]): tuple of (s, a, r, s', done) tuples
             gamma (float): discount factor
         """
-        states, actions, rewards, next_states, dones = experiences
+        ids, states, actions, rewards, next_states, dones, priorities = experiences
 
         criterion = torch.nn.MSELoss()
         optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=LR)
@@ -115,6 +119,8 @@ class Agent:
                 .detach()
                 .gather(1, best_next_actions)
             )
+        else:
+            raise ValueError(f"Invalid td target method {self.td_target_type}")
 
         Q_target = rewards + gamma * best_next_Q * (1 - dones)
 
@@ -126,7 +132,24 @@ class Agent:
         # ------------------- update target network ------------------- #
         self.soft_update(self.qnetwork_local, self.qnetwork_target, TAU)
 
-    def soft_update(self, local_model, target_model, tau):
+        # Update the replay buffer with new priorities
+        new_priorities = rankdata(
+            (Q_target - Q_current).detach().abs().reshape(-1).numpy()
+        )
+        for experience in zip(
+            ids,
+            states,
+            actions,
+            rewards,
+            next_states,
+            dones,
+            priorities,
+            new_priorities,
+        ):
+            self.memory.update_priority(*experience)
+
+    @staticmethod
+    def soft_update(local_model, target_model, tau):
         """Soft update model parameters.
         θ_target = τ*θ_local + (1 - τ)*θ_target
 
@@ -144,6 +167,7 @@ class Agent:
             )
 
 
+# noinspection PyUnresolvedReferences
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
@@ -160,21 +184,50 @@ class ReplayBuffer:
         self.action_size = action_size
         self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
-        self.experience = namedtuple(
-            "Experience",
-            field_names=["state", "action", "reward", "next_state", "done"],
-        )
         self.seed = random.seed(seed)
+        self.next_id = 0  # keep a running counter for IDs in the experience buffer
 
-    def add(self, state, action, reward, next_state, done):
+    def add(self, state, action, reward, next_state, done, priority):
         """Add a new experience to memory."""
-        e = self.experience(state, action, reward, next_state, done)
+        e = Experience(self.next_id, state, action, reward, next_state, done, priority)
         self.memory.append(e)
+        self.next_id += 1
+
+    def update_priority(
+        self, id, state, action, reward, next_state, done, old_priority, new_priority
+    ):
+        old_experience = Experience(
+            id, state, action, reward, next_state, done, old_priority
+        )
+        new_experience = Experience(
+            id, state, action, reward, next_state, done, new_priority
+        )
+        self.memory.remove(old_experience)
+        self.memory.append(new_experience)
+
+    def get_sample_weights(self):
+        priorities = np.array([e.priority for e in self.memory]) ** PRIORITY_ALPHA
+        denom = priorities.sum()
+        return priorities / denom
 
     def sample(self):
         """Randomly sample a batch of experiences from memory."""
-        experiences = random.sample(self.memory, k=self.batch_size)
 
+        weights = self.get_sample_weights()
+        experiences: List[Experience] = random.choices(
+            population=self.memory, weights=weights, k=self.batch_size
+        )
+
+        ids = (
+            torch.from_numpy(np.vstack([e.idx for e in experiences if e is not None]))
+            .float()
+            .to(device)
+        )
+        states = (
+            torch.from_numpy(np.vstack([e.state for e in experiences if e is not None]))
+            .float()
+            .to(device)
+        )
         states = (
             torch.from_numpy(np.vstack([e.state for e in experiences if e is not None]))
             .float()
@@ -210,9 +263,36 @@ class ReplayBuffer:
             .float()
             .to(device)
         )
-
-        return (states, actions, rewards, next_states, dones)
+        priorities = (
+            torch.from_numpy(
+                np.vstack([e.priority for e in experiences if e is not None]).astype(
+                    np.uint8
+                )
+            )
+            .float()
+            .to(device)
+        )
+        return ids, states, actions, rewards, next_states, dones, priorities
 
     def __len__(self):
         """Return the current size of internal memory."""
         return len(self.memory)
+
+
+class Experience:
+    """
+    Use an experience class instead of a namedtuple so we can overwrite the equality
+    method for experience updating
+    """
+
+    def __init__(self, idx, state, action, reward, next_state, done, priority):
+        self.idx = idx
+        self.state = state
+        self.action = action
+        self.reward = reward
+        self.next_state = next_state
+        self.done = done
+        self.priority = priority
+
+    def __eq__(self, other):
+        return self.idx == other.idx
