@@ -23,7 +23,8 @@ LR = 5e-4  # learning rate
 UPDATE_EVERY = 4  # how often to update the network
 ```
 
-The final model was given up to 1800 episodes to train with (though it only needed <1000 in the end) and all training was done with random seed 7366 i.e. `agent = Agent(state_size, action_size, seed=7366, td_target_type="Double DQN")`
+The final model was given up to 1800 episodes to train with (though it only needed 524
+ in the end) and all training was done with random seed 7366 i.e. `agent = Agent(state_size, action_size, seed=7366, td_target_type="Double DQN")`
 
 ## Rewards plot
 
@@ -37,6 +38,9 @@ The plot illustrates that the agent's learning was often slow for extended stret
 
 There are three major directions that I would take this project to improve performance given more time:
 
-* Prioritized experience replay -- I finished an implementation of prioritized experience replay (see the prioritized_replay branch), however my implementation was too slow to be practical. The key slowdown was in the algorithm for getting and updating priority weights. Future work here could change the replay buffer to use a binary heap (recommended by the original paper) to improve performance.
+* Prioritized experience replay -- I finished an implementation of prioritized
+ experience replay (see the prioritized_replay branch), however my implementation was
+  too slow to be practical. The key bottleneck was in the algorithm for getting and
+   updating priority weights. Future work here could change the replay buffer to use a binary heap (recommended by the original paper) to improve performance.
 * Tune model architecture and hyperparameters -- I found that I was able to reliably solve the task without additional hyperparameter tuning, but it may be possible to solve it faster with a different model architecture or different hyperparameters.
-* Investigate dependence on random seeds -- Through a few experiments, I found that model performance depended significantly on the random seed chosen for the agent. For example, with the 7366 seed finally chosen, a Fixed-Q Target approach didn't solve the problem at all in 1800 iterations while Double Q-Learning solved it in 524 iterations. However, I found other seeds where the original DQN worked very well and Double DQN was much slower to find a solution. Given the magnitude of random seed effects, I'd like to better understand if there's a way to better initialize the network to make it less sensitive to the seed.
+* Investigate dependence on random seeds -- Through a few experiments, I found that model performance depended significantly on the random seed chosen for the agent. For example, with the 7366 seed finally chosen, a Fixed-Q Target approach didn't solve the problem at all in 1800 iterations while Double Q-Learning solved it in 524 iterations. However, I found other seeds where the original DQN worked very well and Double DQN was much slower to find a solution. Given the magnitude of random seed effects, I'd like to better understand if there's a way to initialize the network to make it less sensitive to the seed.

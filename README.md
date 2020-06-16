@@ -6,7 +6,8 @@ This repo contains the code to solve the Navigation Project, which is part of th
 
 - States: The states are 37-dimensional continuous vectors simulating sensor input to the robot about its movement and environment
 - Actions: There are 4 discrete actions (moving left, right, forward, and back)
-- Rewards: The agent recieves a reward of +1 for every yellow banana that it collects and a reward of -1 for every blue banana
+- Rewards: The agent receives a reward of +1 for every yellow banana that it collects
+ and a reward of -1 for every blue banana
 
 The goal is to have the agent get an average score of +13 for at least 100 consecutive rounds.
 
@@ -19,11 +20,15 @@ You will need three things to run the project:
 
 ### Installing the python packages
 
-Create a new conda environment (or virtual environment of your choice) and activate it. Install the dependencies using `python -m pip install -r requirements.txt`
+Create a new conda environment (or virtual environment of your choice) and activate
+ it. Install the dependencies using `python -m pip install -r requirements.txt`.
 
 ### Installing Udacity dependencies
 
-Udacity provides specific helper code to run the project and environment. I have not included their `Banana.app` file or their `python` folder with additional code for the environemnt in this repository to protect their IP. Udacity provides specific instructions for installing the unity environment. You can download the `python` folder of additional dependencies from your Udacity workspace and install it using `python -m pip -q install python` or by running `pip -q install ./python` in the Navigation.ipynb notebook.
+Udacity provides specific helper code to run the project and environment. I have not
+ included their `Banana.app` file or their `python` folder with additional code for
+  the environment in this repository to protect their IP. Udacity provides specific
+   instructions for installing the Unity environment. You can download the `python` folder of additional dependencies from your Udacity workspace and install it using `python -m pip -q install python` or by running `pip -q install ./python` in the Navigation.ipynb notebook.
 
 ## Instructions
 
